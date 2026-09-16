@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-stock_ticker (관심 종목 시세) - BookOasis 홈 대시보드 플러그인
+stock_ticker 플러그인 (BookOasis)
 
-환경설정 > 플러그인 설정에서 종목코드를 쉼표로 구분해 입력하면,
-입력한 순서 그대로 홈 화면 위젯에 현재가/등락률을 보여줍니다.
-(입력하지 않은 종목은 표시되지 않습니다)
+관심 종목의 현재가/등락률과 함께, 최근 구간의 종가 시계열(series)을 함께 반환하여
+대시보드/홈 위젯에서 종목별 추이 그래프(스파크라인)를 그릴 수 있도록 합니다.
 
-시세 조회는 네이버 증권 모바일 API를 사용합니다(비공식, 사전 고지 없이
-응답 형식이 바뀌거나 요청이 차단될 수 있습니다). 결과는 종목별로 캐싱되어
-설정한 시간(기본 60초) 동안은 재조회하지 않습니다.
+- 계약: dashboard_widget + home_widget (§5, §5-1 참고)
+- 데이터 소스: Yahoo Finance 비공식 chart API (API 키 불필요)
+- 캐싱: self.cache_get/self.cache_set (Redis, 코어 제공 헬퍼) 사용
+- 커스텀 CSS/그래프: dashboard.html / dashboard.css / dashboard.js (Shadow DOM 격리 렌더링)
 """
 import json
 
@@ -17,188 +17,197 @@ import requests
 from plugins.metadata.base import BaseMetadataProvider
 
 
-class StockTickerMetadataProvider(BaseMetadataProvider):
+class StockTickerProvider(BaseMetadataProvider):
     id = "stock_ticker"
-    name = "관심 종목 시세"
+    name = "주식 시세 위젯 (Stock Ticker)"
     is_searchable = False
 
     config_schema = [
         {
-            "key": "STOCK_CODES",
-            "label": "종목코드 목록 (쉼표로 구분, 입력한 순서대로 표시)",
+            "key": "SYMBOLS",
+            "label": "종목 코드 (쉼표로 구분, 예: AAPL,MSFT,005930.KS)",
             "type": "text",
-            "required": False,
-            "default": "",
-            "placeholder": "예: 005930,000660,035420",
+            "default": "AAPL,MSFT,NVDA",
+            "required": True,
+        },
+        {
+            "key": "RANGE",
+            "label": "추이 조회 기간",
+            "type": "select",
+            "default": "1mo",
+            "options": [
+                {"value": "5d", "label": "5일"},
+                {"value": "1mo", "label": "1개월"},
+                {"value": "3mo", "label": "3개월"},
+                {"value": "6mo", "label": "6개월"},
+                {"value": "1y", "label": "1년"},
+            ],
+        },
+        {
+            "key": "INTERVAL",
+            "label": "데이터 간격",
+            "type": "select",
+            "default": "1d",
+            "options": [
+                {"value": "1d", "label": "일봉"},
+                {"value": "1wk", "label": "주봉"},
+            ],
         },
         {
             "key": "CACHE_TTL_SEC",
-            "label": "시세 캐시 유지 시간(초, 최소 10초)",
+            "label": "캐시 유지 시간(초)",
             "type": "number",
-            "required": False,
-            "default": 60,
+            "default": 900,
         },
     ]
 
-    # 사용자가 "홈 화면 플러그인 배치 모드"를 켜고 이 위젯을 직접 추가해야 노출됩니다.
+    update_manifest = {
+        "enabled": True,
+        "provider": "github-raw",
+        "raw_base_url": "https://raw.githubusercontent.com/mygarakuta/stock_ticker/main",
+        "files": [
+            "stock_ticker.py",
+            "__init__.py",
+            "VERSION",
+            "dashboard.html",
+            "dashboard.css",
+            "dashboard.js",
+        ],
+        "version_file": "VERSION",
+        "version_key": "plugin version",
+        "show_sample_update_button": True,
+    }
+
+    # [플러그인] 공통 데스크 탭 카드 (기존과 동일하게 유지)
+    dashboard_widget = {
+        "title": "주식 시세",
+        "subtitle": "관심 종목 추이",
+        "provider": "Yahoo Finance",
+        "icon": "fa-solid fa-chart-line",
+        "limit": 10,
+    }
+
+    # 실제 홈 대시보드 위젯 (플러그인 배치 모드를 켠 사용자만 노출, §5-1)
     home_widget = {
-        "title": "관심 종목 시세",
+        "title": "주식 시세",
+        "subtitle": "관심 종목 추이",
         "icon": "fa-solid fa-chart-line",
         "order": 60,
-        "limit": 20,
+        "limit": 10,
         "sessions": "all",
         "layout": "grid",
-        "size": 1,
+        "size": 2,
     }
 
-    NAVER_API_URL = "https://m.stock.naver.com/api/stock/{code}/basic"
-    REQUEST_HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://m.stock.naver.com/",
-    }
-
-    # ------------------------------------------------------------------
-    # 필수 계약 (이 플러그인은 검색형 메타데이터 기능은 쓰지 않음)
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # 필수 계약 (대시보드 전용 플러그인이므로 실질 동작 없음)
+    # -----------------------------------------------------------------
     def search(self, db_type, query):
         return {"success": True, "items": []}
 
     def apply(self, db_type, book_id, item_data):
-        return False, "이 플러그인은 도서 메타데이터에 적용할 수 없습니다."
+        return False, "대시보드 전용 플러그인입니다."
 
-    # ------------------------------------------------------------------
-    # 홈 위젯 데이터 (home_widget이 재사용하는 공통 메서드)
-    # ------------------------------------------------------------------
-    def get_dashboard_data(self, db_type, limit=10):
-        cfg = self.get_plugin_config(db_type, default={})
-        raw_codes = str(cfg.get("STOCK_CODES") or "").strip()
-
-        if not raw_codes:
-            return {
-                "success": True,
-                "items": [
-                    {
-                        "item_type": "metric",
-                        "metric": "설정 필요",
-                        "value": "-",
-                        "description": "환경설정 > 플러그인 설정에서 종목코드를 입력하세요.",
-                    }
-                ],
-            }
-
-        # 입력 순서를 그대로 유지하면서 중복/공백만 제거
-        codes = []
-        for part in raw_codes.split(","):
-            code = part.strip()
-            if code and code not in codes:
-                codes.append(code)
-
-        ttl = self._parse_ttl(cfg.get("CACHE_TTL_SEC"))
-
-        target_codes = codes[:limit] if limit else codes
-        items = [self._to_item(code, self._get_stock_info(code, ttl)) for code in target_codes]
-
-        return {"success": True, "items": items}
-
-    # ------------------------------------------------------------------
+    # -----------------------------------------------------------------
     # 내부 헬퍼
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _parse_ttl(value):
+    # -----------------------------------------------------------------
+    def _get_cfg(self, db_type):
+        cfg = self.get_plugin_config(db_type, default={})
+        symbols_raw = cfg.get("SYMBOLS") or "AAPL,MSFT,NVDA"
+        symbols = [s.strip().upper() for s in symbols_raw.split(",") if s.strip()]
+        rng = cfg.get("RANGE") or "1mo"
+        interval = cfg.get("INTERVAL") or "1d"
         try:
-            ttl = int(value)
+            ttl = int(cfg.get("CACHE_TTL_SEC") or 900)
         except (TypeError, ValueError):
-            ttl = 60
-        return max(10, ttl)
+            ttl = 900
+        return symbols, rng, interval, ttl
 
-    def _get_stock_info(self, code, ttl):
-        cache_key = f"stock:{code}"
+    def _fetch_symbol(self, symbol, rng, interval):
+        """Yahoo Finance chart API에서 현재가 + 종가 시계열을 가져온다."""
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/{}".format(symbol)
+        params = {"range": rng, "interval": interval}
+        headers = {"User-Agent": "Mozilla/5.0 (BookOasis stock_ticker plugin)"}
+
+        try:
+            res = requests.get(url, params=params, headers=headers, timeout=10)
+            res.raise_for_status()
+            data = res.json()
+
+            result_list = (data.get("chart") or {}).get("result") or []
+            if not result_list:
+                return None
+
+            node = result_list[0]
+            meta = node.get("meta") or {}
+
+            quote = ((node.get("indicators") or {}).get("quote") or [{}])[0]
+            closes_raw = quote.get("close") or []
+            # None(휴장/결측)을 건너뛰고 숫자만 남긴다
+            closes = [float(c) for c in closes_raw if isinstance(c, (int, float))]
+            if not closes:
+                return None
+
+            price = meta.get("regularMarketPrice", closes[-1])
+            prev_close = meta.get("chartPreviousClose") or closes[0]
+            change_pct = 0.0
+            if prev_close:
+                change_pct = round((price - prev_close) / prev_close * 100, 2)
+
+            return {
+                "symbol": symbol,
+                "name": meta.get("shortName") or meta.get("longName") or symbol,
+                "currency": meta.get("currency") or "",
+                "price": round(float(price), 2),
+                "change_pct": change_pct,
+                # 위젯 그래프가 너무 촘촘해지지 않도록 최근 60개 포인트로 제한
+                "series": [round(c, 4) for c in closes][-60:],
+            }
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            return None
+
+    # -----------------------------------------------------------------
+    # 대시보드 / 홈 위젯 공통 데이터 소스
+    # -----------------------------------------------------------------
+    def get_dashboard_data(self, db_type, limit=10):
+        symbols, rng, interval, ttl = self._get_cfg(db_type)
+        try:
+            limit = int(limit or len(symbols)) or len(symbols)
+        except (TypeError, ValueError):
+            limit = len(symbols)
+        symbols = symbols[:max(1, limit)]
+
+        cache_key = "quotes:{}:{}:{}:{}".format(db_type, rng, interval, ",".join(symbols))
         cached = self.cache_get(cache_key)
         if cached:
             try:
-                return json.loads(cached)
-            except (TypeError, ValueError):
-                pass  # 캐시가 손상된 경우 새로 조회
+                return {"success": True, "items": json.loads(cached)}
+            except (ValueError, TypeError):
+                pass  # 캐시가 손상된 경우 아래에서 다시 조회
 
-        info = self._fetch_from_naver(code)
-        if info.get("success"):
-            self.cache_set(cache_key, json.dumps(info), ttl=ttl)
-        return info
-
-    def _fetch_from_naver(self, code):
-        try:
-            res = requests.get(
-                self.NAVER_API_URL.format(code=code),
-                headers=self.REQUEST_HEADERS,
-                timeout=10,
+        items = []
+        for sym in symbols:
+            info = self._fetch_symbol(sym, rng, interval)
+            if not info:
+                continue
+            items.append(
+                {
+                    # dashboard.html/js가 없는 환경(구버전 코어)을 위한 최소 폴백 표시
+                    "item_type": "metric",
+                    "metric": info["symbol"],
+                    "value": "{} {}".format(info["price"], info["currency"]).strip(),
+                    "description": info["name"],
+                    # dashboard.js가 그래프를 그릴 때 쓰는 실제 데이터
+                    "symbol": info["symbol"],
+                    "name": info["name"],
+                    "price": info["price"],
+                    "currency": info["currency"],
+                    "change_pct": info["change_pct"],
+                    "series": info["series"],
+                }
             )
-            res.raise_for_status()
-            data = res.json()
-        except requests.RequestException as e:
-            return {"success": False, "error": f"시세 조회 실패: {e}"}
-        except ValueError as e:
-            return {"success": False, "error": f"응답 파싱 실패: {e}"}
 
-        name = data.get("stockName") or data.get("itemName") or code
-        price = data.get("closePrice")
-        change = data.get("compareToPreviousClosePrice")
-        rate = data.get("fluctuationsRatio")
-        # risingFalling: 네이버 내부 방향 코드(상승/보합/하락). 응답 필드명이 바뀌면
-        # 이 값이 비어 있을 수 있으며, 이 경우 방향 화살표는 '-'로 표시됩니다.
-        direction = str(data.get("risingFalling") or "")
+        if items:
+            self.cache_set(cache_key, json.dumps(items), ttl=ttl)
 
-        return {
-            "success": True,
-            "name": name,
-            "price": price,
-            "change": change,
-            "rate": rate,
-            "direction": direction,
-        }
-
-    @staticmethod
-    def _to_item(code, info):
-        # 위젯 카드 레이아웃상 metric 칸이 굵게, value/description 칸이 일반체로
-        # 표시되는 것을 이용해: 이름(코드)은 metric에, 현재가/변동은 value에 담는다.
-        if not info.get("success"):
-            return {
-                "item_type": "metric",
-                "metric": code,
-                "value": f"조회 실패 ({info.get('error', '')})",
-                "description": "",
-            }
-
-        name = info.get("name") or code
-        price = info.get("price")
-        change = info.get("change")
-        rate = info.get("rate")
-
-        price_text = f"{price}원" if price is not None else "-"
-
-        change_text = "-"
-        if change is not None and rate is not None:
-            try:
-                change_num = float(str(change).replace(",", ""))
-                rate_num = float(str(rate).replace(",", ""))
-            except (TypeError, ValueError):
-                change_num = None
-                rate_num = None
-
-            if change_num is not None:
-                if change_num > 0:
-                    arrow = "▲"
-                elif change_num < 0:
-                    arrow = "▼"
-                else:
-                    arrow = "－"
-                change_text = f"{arrow}{abs(change_num):g}원 ({abs(rate_num):g}%)"
-            else:
-                # 숫자 변환에 실패하면 원본 값을 그대로 노출(부호 중복 방지를 위해 화살표는 생략)
-                change_text = f"{change}원 ({rate}%)"
-
-        return {
-            "item_type": "metric",
-            "metric": f"{name}({code})",
-            "value": f"{price_text}  {change_text}",
-            "description": "",
-        }
+        return {"success": True, "items": items}

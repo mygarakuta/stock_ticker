@@ -1,1 +1,4 @@
-# stock_ticker 플러그인 패키지
+# -*- coding: utf-8 -*-
+from .stock_ticker import StockTickerProvider
+
+__all__ = ["StockTickerProvider"]

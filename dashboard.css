@@ -1,0 +1,119 @@
+/* plugins/metadata/stock_ticker/dashboard.css
+   Shadow DOM 내부에서만 적용되며, 앱 전역 스타일과 서로 격리됩니다.
+   색상은 하드코딩 대신 코어가 제공하는 전역 CSS 변수를 사용해
+   8종 대시보드 테마(purple/dark/light/sepia/blue/aquamarine/ironman/epaper)에
+   자동으로 맞춰지도록 합니다. */
+
+.stock-ticker-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    font-family: inherit;
+}
+
+.stock-ticker-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stock-ticker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--app-bg-card, #1e293b);
+    border: 1px solid var(--app-border-light, rgba(148, 163, 184, 0.18));
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+    cursor: default;
+}
+
+.stock-ticker-item:hover {
+    background: var(--app-bg-card-hover, #26344d);
+}
+
+.stock-ticker-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 60px;
+    flex: 0 0 auto;
+}
+
+.stock-ticker-symbol {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--app-text-primary, #f1f5f9);
+    line-height: 1.2;
+}
+
+.stock-ticker-name {
+    font-size: 0.7rem;
+    color: var(--app-text-muted, #94a3b8);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px;
+}
+
+.stock-ticker-chart {
+    flex: 1 1 auto;
+    min-width: 56px;
+    height: 34px;
+}
+
+.stock-ticker-chart svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
+.stock-ticker-price-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    min-width: 76px;
+    flex: 0 0 auto;
+}
+
+.stock-ticker-price {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--app-text-primary, #f1f5f9);
+    line-height: 1.2;
+}
+
+.stock-ticker-change {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+/* 상승/하락 색상은 시장 관례상 테마와 무관하게 고정합니다 */
+.stock-ticker-change.up {
+    color: #22c55e;
+}
+
+.stock-ticker-change.down {
+    color: #ef4444;
+}
+
+.stock-ticker-change.flat {
+    color: var(--app-text-muted, #94a3b8);
+}
+
+.stock-ticker-empty {
+    color: var(--app-text-muted, #94a3b8);
+    font-size: 0.82rem;
+    text-align: center;
+    padding: 14px 4px;
+}
+
+.stock-ticker-updated {
+    font-size: 0.66rem;
+    color: var(--app-text-muted, #94a3b8);
+    text-align: right;
+    opacity: 0.8;
+}
