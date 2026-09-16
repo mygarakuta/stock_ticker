@@ -65,12 +65,21 @@ function stockTickerRenderChart(series) {
     );
 }
 
+// 숫자를 3자리마다 쉼표로 구분 (253500 -> 253,500)
+function stockTickerFormatNumber(value) {
+    if (typeof value !== 'number' || isNaN(value)) return value;
+    var parts = value.toString().split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+}
+
 // 종목 카드 1개(심볼/이름 + 그래프 + 현재가/등락률) 마크업 생성
 function stockTickerRenderItem(item) {
     var change = typeof item.change_pct === 'number' ? item.change_pct : 0;
     var changeClass = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
     var changeSign = change > 0 ? '+' : '';
-    var priceText = (item.price != null ? item.price : '-') + (item.currency ? ' ' + item.currency : '');
+    var priceValue = item.price != null ? stockTickerFormatNumber(item.price) : '-';
+    var priceText = priceValue + (item.currency ? ' ' + item.currency : '');
 
     return (
         '<div class="stock-ticker-item" data-symbol="' + stockTickerEscapeHtml(item.symbol || '') + '">' +
