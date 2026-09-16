@@ -90,7 +90,6 @@ class StockTickerProvider(BaseMetadataProvider):
     # 실제 홈 대시보드 위젯 (플러그인 배치 모드를 켠 사용자만 노출, §5-1)
     home_widget = {
         "title": "주식 시세",
-        "subtitle": "관심 종목 추이",
         "icon": "fa-solid fa-chart-line",
         "order": 60,
         "limit": 10,
