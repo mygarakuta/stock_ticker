@@ -96,7 +96,7 @@ class StockTickerProvider(BaseMetadataProvider):
         "limit": 10,
         "sessions": "all",
         "layout": "grid",
-        "size": 2,
+        "size": 1,
     }
 
     # -----------------------------------------------------------------
